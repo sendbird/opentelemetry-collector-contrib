@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lightstep/go-expohisto/structure"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
@@ -18,6 +17,7 @@ import (
 	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
 
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/expohisto/structure"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/statsdreceiver/internal/metadata"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/statsdreceiver/protocol"
 )
@@ -194,6 +194,22 @@ func TestValidate(t *testing.T) {
 			expectedErr: invalidHistogramErr,
 		},
 		{
+			name: "invalidHistogramMaxScaleOnGauge",
+			cfg: &Config{
+				AggregationInterval: 20 * time.Second,
+				TimerHistogramMapping: []protocol.TimerHistogramMapping{
+					{
+						StatsdType:   "timing",
+						ObserverType: "gauge",
+						Histogram: protocol.HistogramConfig{
+							MaxScale: func() *int32 { s := int32(0); return &s }(),
+						},
+					},
+				},
+			},
+			expectedErr: invalidHistogramErr,
+		},
+		{
 			name: "invalidSummary",
 			cfg: &Config{
 				AggregationInterval: 20 * time.Second,
@@ -290,6 +306,43 @@ func TestConfig_Validate_MaxSize(t *testing.T) {
 		}
 		err := cfg.Validate()
 		assert.ErrorContains(t, err, "histogram max_size out of range")
+	}
+}
+
+func TestConfig_Validate_MaxScale(t *testing.T) {
+	for _, maxScale := range []int32{structure.MaximumMaxScale + 1, structure.MinimumMaxScale - 1} {
+		cfg := &Config{
+			AggregationInterval: 20 * time.Second,
+			TimerHistogramMapping: []protocol.TimerHistogramMapping{
+				{
+					StatsdType:   "timing",
+					ObserverType: "histogram",
+					Histogram: protocol.HistogramConfig{
+						MaxScale: &maxScale,
+					},
+				},
+			},
+		}
+		err := cfg.Validate()
+		assert.ErrorContains(t, err, "histogram max_scale out of range")
+	}
+}
+
+func TestConfig_Validate_MaxScaleGoodConfig(t *testing.T) {
+	for _, maxScale := range []int32{structure.MaximumMaxScale, structure.MinimumMaxScale, 0} {
+		cfg := &Config{
+			AggregationInterval: 20 * time.Second,
+			TimerHistogramMapping: []protocol.TimerHistogramMapping{
+				{
+					StatsdType:   "timing",
+					ObserverType: "histogram",
+					Histogram: protocol.HistogramConfig{
+						MaxScale: &maxScale,
+					},
+				},
+			},
+		}
+		assert.NoError(t, cfg.Validate(), "max_scale %d should be valid", maxScale)
 	}
 }
 

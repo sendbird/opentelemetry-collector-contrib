@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lightstep/go-expohisto/structure"
 	"go.opentelemetry.io/collector/client"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -21,6 +20,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	conventions "go.opentelemetry.io/otel/semconv/v1.40.0"
 
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/expohisto/structure"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/statsdreceiver/protocol"
 )
 
@@ -253,6 +253,9 @@ func expoHistogramConfig(opts protocol.HistogramConfig) structure.Config {
 	var r []structure.Option
 	if opts.MaxSize >= structure.MinSize {
 		r = append(r, structure.WithMaxSize(opts.MaxSize))
+	}
+	if opts.MaxScale != nil {
+		r = append(r, structure.WithMaxScale(*opts.MaxScale))
 	}
 	return structure.NewConfig(r...)
 }

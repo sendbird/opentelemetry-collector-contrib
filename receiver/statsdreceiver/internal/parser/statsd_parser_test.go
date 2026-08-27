@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lightstep/go-expohisto/mapping/logarithm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
@@ -17,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/internal/coreinternal/metricstestutil"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/expohisto/mapping/logarithm"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/statsdreceiver/protocol"
 )
 
@@ -2428,4 +2428,77 @@ func TestStatsDParser_HistogramMaxSize(t *testing.T) {
 			assert.LessOrEqual(t, dp.Positive().BucketCounts().Len(), 10)
 		})
 	}
+}
+
+func TestStatsDParser_HistogramMaxScale(t *testing.T) {
+	originalTimeNowFunc := timeNowFunc
+	timeNowFunc = func() time.Time {
+		return time.Unix(711, 0)
+	}
+	t.Cleanup(func() {
+		timeNowFunc = originalTimeNowFunc
+	})
+
+	// Scale 0 is a valid setting, so the field is a pointer: an absent
+	// max_scale must stay on the library default rather than being read as 0.
+	for _, statsdType := range []string{"histogram", "distribution"} {
+		t.Run(statsdType, func(t *testing.T) {
+			maxScale := int32(0)
+			p := &StatsDParser{}
+			require.NoError(t, p.Initialize(false, false, false, false, false, []protocol.TimerHistogramMapping{
+				{
+					StatsdType:   protocol.TypeName(statsdType),
+					ObserverType: "histogram",
+					Histogram: protocol.HistogramConfig{
+						MaxScale: &maxScale,
+					},
+				},
+			}, protocol.CounterTypeInt))
+
+			addr, _ := net.ResolveUDPAddr("udp", "1.2.3.4:5678")
+			unit := "h"
+			if statsdType == "distribution" {
+				unit = "d"
+			}
+			for _, value := range []string{"1.5", "2.5", "4.5", "8.5", "16.5", "32.5", "64.5", "128.5", "256.5", "512.5"} {
+				require.NoError(t, p.Aggregate("expohisto:"+value+"|"+unit, addr))
+			}
+
+			metrics := p.GetMetrics()
+			require.Len(t, metrics, 1)
+			m := metrics[0].Metrics.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0)
+			require.Equal(t, pmetric.MetricTypeExponentialHistogram, m.Type())
+			assert.Equal(t, int32(0), m.ExponentialHistogram().DataPoints().At(0).Scale())
+		})
+	}
+}
+
+func TestStatsDParser_HistogramMaxScaleUnsetKeepsDefault(t *testing.T) {
+	originalTimeNowFunc := timeNowFunc
+	timeNowFunc = func() time.Time {
+		return time.Unix(711, 0)
+	}
+	t.Cleanup(func() {
+		timeNowFunc = originalTimeNowFunc
+	})
+
+	p := &StatsDParser{}
+	require.NoError(t, p.Initialize(false, false, false, false, false, []protocol.TimerHistogramMapping{
+		{
+			StatsdType:   "distribution",
+			ObserverType: "histogram",
+			Histogram:    protocol.HistogramConfig{},
+		},
+	}, protocol.CounterTypeInt))
+
+	addr, _ := net.ResolveUDPAddr("udp", "1.2.3.4:5678")
+	for _, value := range []string{"1.5", "2.5", "4.5", "8.5", "16.5", "32.5", "64.5", "128.5", "256.5", "512.5"} {
+		require.NoError(t, p.Aggregate("expohisto:"+value+"|d", addr))
+	}
+
+	metrics := p.GetMetrics()
+	require.Len(t, metrics, 1)
+	m := metrics[0].Metrics.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0)
+	require.Equal(t, pmetric.MetricTypeExponentialHistogram, m.Type())
+	assert.Positive(t, m.ExponentialHistogram().DataPoints().At(0).Scale())
 }

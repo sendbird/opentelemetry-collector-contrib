@@ -52,6 +52,13 @@ The Following settings are optional:
 For `"summary`, the statsD receiver will aggregate to one OTLP summary metric for one metric description (the same metric name with the same tags). By default, it will send percentile 0, 10, 50, 90, 95, 100 to the downstream.  The `"histogram"` setting selects an [auto-scaling exponential histogram configured with only a maximum size](https://github.com/lightstep/go-expohisto#readme), as shown in the example below unless it matches the configured explicit_buckets matcher pattern.
 TODO: Add a new option to use a smoothed summary like Prometheus: https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/3261 
 
+`"max_scale"` pins the scale an exponential histogram starts at. Histograms only ever
+downscale, so a scale low enough that `max_size` can never be exceeded keeps the bucket
+boundaries fixed for the lifetime of the series. Without it the scale is derived from the
+observed values, which means two series of the same metric can end up on different bucket
+grids and stop being comparable. Scale `0` is a valid setting; omitting `max_scale` keeps
+the auto-scaling default.
+
 Example:
 
 ```yaml

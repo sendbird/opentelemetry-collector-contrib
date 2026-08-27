@@ -10,10 +10,10 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/lightstep/go-expohisto/structure"
 	"go.opentelemetry.io/collector/config/confignet"
 	"go.uber.org/multierr"
 
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/expohisto/structure"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/statsdreceiver/protocol"
 )
 
@@ -82,6 +82,10 @@ func (c *Config) Validate() error {
 				errs = multierr.Append(errs, fmt.Errorf("histogram max_size out of range: %v", eachMap.Histogram.MaxSize))
 			}
 
+			if ms := eachMap.Histogram.MaxScale; ms != nil && (*ms < structure.MinimumMaxScale || *ms > structure.MaximumMaxScale) {
+				errs = multierr.Append(errs, fmt.Errorf("histogram max_scale out of range: %v", *ms))
+			}
+
 			if eachMap.Histogram.ExplicitBuckets != nil {
 				if err := c.validateExplicitBuckets(eachMap.Histogram.ExplicitBuckets); err != nil {
 					errs = multierr.Append(errs, err)
@@ -89,7 +93,7 @@ func (c *Config) Validate() error {
 			}
 		} else if eachMap.ObserverType != protocol.HistogramObserver {
 			// Non-histogram observer w/ histogram config
-			if eachMap.Histogram.MaxSize != 0 || eachMap.Histogram.ExplicitBuckets != nil {
+			if eachMap.Histogram.MaxSize != 0 || eachMap.Histogram.MaxScale != nil || eachMap.Histogram.ExplicitBuckets != nil {
 				errs = multierr.Append(errs, errors.New("histogram configuration requires observer_type: histogram"))
 			}
 		}

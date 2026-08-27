@@ -9,11 +9,11 @@ import (
 	"sort"
 	"time"
 
-	"github.com/lightstep/go-expohisto/structure"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"gonum.org/v1/gonum/stat"
 
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/expohisto/structure"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/statsdreceiver/protocol"
 )
 
