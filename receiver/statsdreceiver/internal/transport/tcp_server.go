@@ -82,9 +82,10 @@ func handleTCPConn(c net.Conn, reporter Reporter, transferChan chan<- Metric) {
 		for {
 			bytes, err := buf.ReadBytes(byte('\n'))
 			if errors.Is(err, io.EOF) {
-				if len(bytes) != 0 {
-					remainder = bytes
-				}
+				// Assign unconditionally: a read ending exactly on a newline
+				// leaves nothing partial, and skipping the assignment would keep
+				// the previous remainder and prepend it to the next line.
+				remainder = bytes
 				break
 			}
 			line := strings.TrimSpace(string(bytes))
