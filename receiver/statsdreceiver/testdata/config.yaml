@@ -13,6 +13,7 @@ statsd/receiver_settings:
       observer_type: "histogram"
       histogram:
         max_size: 170
+        zero_threshold: 0.001
         explicit_buckets:
           - matcher_pattern: "foo.*"
             buckets: [1, 10, 100]

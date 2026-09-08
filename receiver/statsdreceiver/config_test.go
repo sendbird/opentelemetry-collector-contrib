@@ -6,6 +6,7 @@ package statsdreceiver
 import (
 	"errors"
 	"fmt"
+	"math"
 	"path/filepath"
 	"testing"
 	"time"
@@ -68,7 +69,8 @@ func TestLoadConfig(t *testing.T) {
 						StatsdType:   "timing",
 						ObserverType: "histogram",
 						Histogram: protocol.HistogramConfig{
-							MaxSize: 170,
+							MaxSize:       170,
+							ZeroThreshold: 0.001,
 							ExplicitBuckets: []protocol.ExplicitBucket{
 								{
 									MatcherPattern: "foo.*",
@@ -210,6 +212,22 @@ func TestValidate(t *testing.T) {
 			expectedErr: invalidHistogramErr,
 		},
 		{
+			name: "invalidHistogramZeroThresholdOnGauge",
+			cfg: &Config{
+				AggregationInterval: 20 * time.Second,
+				TimerHistogramMapping: []protocol.TimerHistogramMapping{
+					{
+						StatsdType:   "timing",
+						ObserverType: "gauge",
+						Histogram: protocol.HistogramConfig{
+							ZeroThreshold: 0.001,
+						},
+					},
+				},
+			},
+			expectedErr: invalidHistogramErr,
+		},
+		{
 			name: "invalidSummary",
 			cfg: &Config{
 				AggregationInterval: 20 * time.Second,
@@ -325,6 +343,43 @@ func TestConfig_Validate_MaxScale(t *testing.T) {
 		}
 		err := cfg.Validate()
 		assert.ErrorContains(t, err, "histogram max_scale out of range")
+	}
+}
+
+func TestConfig_Validate_ZeroThreshold(t *testing.T) {
+	for _, zeroThreshold := range []float64{-1, math.NaN(), math.Inf(+1)} {
+		cfg := &Config{
+			AggregationInterval: 20 * time.Second,
+			TimerHistogramMapping: []protocol.TimerHistogramMapping{
+				{
+					StatsdType:   "timing",
+					ObserverType: "histogram",
+					Histogram: protocol.HistogramConfig{
+						ZeroThreshold: zeroThreshold,
+					},
+				},
+			},
+		}
+		err := cfg.Validate()
+		assert.ErrorContains(t, err, "histogram zero_threshold out of range")
+	}
+}
+
+func TestConfig_Validate_ZeroThresholdGoodConfig(t *testing.T) {
+	for _, zeroThreshold := range []float64{0, 1e-9, 1000} {
+		cfg := &Config{
+			AggregationInterval: 20 * time.Second,
+			TimerHistogramMapping: []protocol.TimerHistogramMapping{
+				{
+					StatsdType:   "timing",
+					ObserverType: "histogram",
+					Histogram: protocol.HistogramConfig{
+						ZeroThreshold: zeroThreshold,
+					},
+				},
+			},
+		}
+		assert.NoError(t, cfg.Validate(), "zero_threshold %g should be valid", zeroThreshold)
 	}
 }
 

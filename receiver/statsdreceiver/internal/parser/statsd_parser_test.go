@@ -2502,3 +2502,79 @@ func TestStatsDParser_HistogramMaxScaleUnsetKeepsDefault(t *testing.T) {
 	require.Equal(t, pmetric.MetricTypeExponentialHistogram, m.Type())
 	assert.Positive(t, m.ExponentialHistogram().DataPoints().At(0).Scale())
 }
+
+func TestStatsDParser_HistogramZeroThreshold(t *testing.T) {
+	originalTimeNowFunc := timeNowFunc
+	timeNowFunc = func() time.Time {
+		return time.Unix(711, 0)
+	}
+	t.Cleanup(func() {
+		timeNowFunc = originalTimeNowFunc
+	})
+
+	p := &StatsDParser{}
+	require.NoError(t, p.Initialize(false, false, false, false, false, []protocol.TimerHistogramMapping{
+		{
+			StatsdType:   "distribution",
+			ObserverType: "histogram",
+			Histogram: protocol.HistogramConfig{
+				ZeroThreshold: 1,
+			},
+		},
+	}, protocol.CounterTypeInt))
+
+	addr, _ := net.ResolveUDPAddr("udp", "1.2.3.4:5678")
+	// Two measurements inside the closed interval [-1,1] and one outside it.
+	for _, value := range []string{"0.25", "-0.5", "4"} {
+		require.NoError(t, p.Aggregate("expohisto:"+value+"|d", addr))
+	}
+
+	metrics := p.GetMetrics()
+	require.Len(t, metrics, 1)
+	m := metrics[0].Metrics.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0)
+	require.Equal(t, pmetric.MetricTypeExponentialHistogram, m.Type())
+
+	dp := m.ExponentialHistogram().DataPoints().At(0)
+	assert.Equal(t, 1.0, dp.ZeroThreshold())
+	assert.Equal(t, uint64(3), dp.Count())
+	assert.Equal(t, uint64(2), dp.ZeroCount())
+	assert.Equal(t, 0, dp.Negative().BucketCounts().Len())
+	// The folded values keep their magnitude in the sum, the minimum and the
+	// maximum; only their bucket resolution is discarded.
+	assert.Equal(t, 3.75, dp.Sum())
+	assert.Equal(t, -0.5, dp.Min())
+	assert.Equal(t, 4.0, dp.Max())
+}
+
+func TestStatsDParser_HistogramZeroThresholdUnsetFoldsOnlyZero(t *testing.T) {
+	originalTimeNowFunc := timeNowFunc
+	timeNowFunc = func() time.Time {
+		return time.Unix(711, 0)
+	}
+	t.Cleanup(func() {
+		timeNowFunc = originalTimeNowFunc
+	})
+
+	p := &StatsDParser{}
+	require.NoError(t, p.Initialize(false, false, false, false, false, []protocol.TimerHistogramMapping{
+		{
+			StatsdType:   "distribution",
+			ObserverType: "histogram",
+			Histogram:    protocol.HistogramConfig{},
+		},
+	}, protocol.CounterTypeInt))
+
+	addr, _ := net.ResolveUDPAddr("udp", "1.2.3.4:5678")
+	for _, value := range []string{"0", "0.25", "4"} {
+		require.NoError(t, p.Aggregate("expohisto:"+value+"|d", addr))
+	}
+
+	metrics := p.GetMetrics()
+	require.Len(t, metrics, 1)
+	m := metrics[0].Metrics.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0)
+	dp := m.ExponentialHistogram().DataPoints().At(0)
+
+	assert.Equal(t, 0.0, dp.ZeroThreshold())
+	assert.Equal(t, uint64(1), dp.ZeroCount())
+	assert.Positive(t, dp.Positive().BucketCounts().Len())
+}

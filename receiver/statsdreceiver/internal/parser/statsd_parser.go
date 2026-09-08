@@ -216,7 +216,8 @@ func (p *StatsDParser) Initialize(enableMetricType, enableSimpleTags, isMonotoni
 	p.counterType = counterType
 
 	// Note: validation occurs in ("../".Config).validate()
-	for _, eachMap := range sendTimerHistogram {
+	for i := range sendTimerHistogram {
+		eachMap := &sendTimerHistogram[i]
 		switch eachMap.StatsdType {
 		case protocol.HistogramTypeName, protocol.DistributionTypeName:
 			p.histogramEvents.method = eachMap.ObserverType
@@ -256,6 +257,9 @@ func expoHistogramConfig(opts protocol.HistogramConfig) structure.Config {
 	}
 	if opts.MaxScale != nil {
 		r = append(r, structure.WithMaxScale(*opts.MaxScale))
+	}
+	if opts.ZeroThreshold != 0 {
+		r = append(r, structure.WithZeroThreshold(opts.ZeroThreshold))
 	}
 	return structure.NewConfig(r...)
 }

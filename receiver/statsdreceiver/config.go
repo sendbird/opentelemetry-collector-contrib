@@ -6,6 +6,7 @@ package statsdreceiver // import "github.com/open-telemetry/opentelemetry-collec
 import (
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"regexp"
 	"time"
@@ -52,7 +53,8 @@ func (c *Config) Validate() error {
 	}
 
 	var TimerHistogramMappingMissingObjectName bool
-	for _, eachMap := range c.TimerHistogramMapping {
+	for i := range c.TimerHistogramMapping {
+		eachMap := &c.TimerHistogramMapping[i]
 		if eachMap.StatsdType == "" {
 			TimerHistogramMappingMissingObjectName = true
 			break
@@ -86,6 +88,10 @@ func (c *Config) Validate() error {
 				errs = multierr.Append(errs, fmt.Errorf("histogram max_scale out of range: %v", *ms))
 			}
 
+			if zt := eachMap.Histogram.ZeroThreshold; math.IsNaN(zt) || math.IsInf(zt, +1) || zt < 0 {
+				errs = multierr.Append(errs, fmt.Errorf("histogram zero_threshold out of range: %v", zt))
+			}
+
 			if eachMap.Histogram.ExplicitBuckets != nil {
 				if err := c.validateExplicitBuckets(eachMap.Histogram.ExplicitBuckets); err != nil {
 					errs = multierr.Append(errs, err)
@@ -93,7 +99,7 @@ func (c *Config) Validate() error {
 			}
 		} else if eachMap.ObserverType != protocol.HistogramObserver {
 			// Non-histogram observer w/ histogram config
-			if eachMap.Histogram.MaxSize != 0 || eachMap.Histogram.MaxScale != nil || eachMap.Histogram.ExplicitBuckets != nil {
+			if eachMap.Histogram.MaxSize != 0 || eachMap.Histogram.MaxScale != nil || eachMap.Histogram.ZeroThreshold != 0 || eachMap.Histogram.ExplicitBuckets != nil {
 				errs = multierr.Append(errs, errors.New("histogram configuration requires observer_type: histogram"))
 			}
 		}

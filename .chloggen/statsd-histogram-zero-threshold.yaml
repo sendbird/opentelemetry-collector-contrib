@@ -1,0 +1,31 @@
+# One of 'breaking', 'deprecation', 'new_component', 'enhancement', 'bug_fix'
+change_type: enhancement
+
+# The name of the component, or a single word describing the area of concern, (e.g. receiver/filelog)
+component: receiver/statsd
+
+# A brief description of the change.  Surround your text with quotes ("") if it needs to start with a backtick (`).
+note: Add `zero_threshold` to the histogram timer mapping to widen the exponential histogram zero bucket
+
+# Mandatory: One or more tracking issues related to the change. You can use the PR number here if no issue exists.
+issues: [0] # TODO: replace with the PR number at submission time
+
+# (Optional) One or more lines of additional information to render under the primary note.
+# These lines will be padded with 2 spaces and then inserted directly into the document.
+# Use pipe (|) for multiline entries.
+subtext: |
+  A series whose values reach far below the range anyone queries spends buckets, and
+  therefore series, on resolution nobody reads. `zero_threshold` counts measurements in
+  the closed interval [-threshold, threshold] in the zero bucket, which is the OTLP
+  `zero_threshold` field, so no bucket is created below it. Sum, count, min and max are
+  unaffected; quantiles below the threshold are not, and become meaningless.
+
+  The default of 0 folds only exact zeros, which is the previous behavior. Note this
+  differs from the Prometheus client, where 0 selects a non-zero default threshold.
+
+# Optional: The change log or logs in which this entry should be included.
+# e.g. '[user]' or '[user, api]'
+# Include 'user' if the change is relevant to end users.
+# Include 'api' if there is a change to a library API.
+# Default: '[user]'
+change_logs: [user]

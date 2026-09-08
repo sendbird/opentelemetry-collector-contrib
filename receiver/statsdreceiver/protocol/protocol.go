@@ -48,7 +48,10 @@ type HistogramConfig struct {
 	MaxSize int32 `mapstructure:"max_size"`
 	// MaxScale is a pointer because 0 is a valid scale: an absent max_scale
 	// must keep the library default instead of being read as scale 0.
-	MaxScale        *int32           `mapstructure:"max_scale"`
+	MaxScale *int32 `mapstructure:"max_scale"`
+	// ZeroThreshold needs no pointer: 0 disables the zero region, which is
+	// also the behavior of an absent key.
+	ZeroThreshold   float64          `mapstructure:"zero_threshold"`
 	ExplicitBuckets []ExplicitBucket `mapstructure:"explicit_buckets"`
 	// prevent unkeyed literal initialization
 	_ struct{}

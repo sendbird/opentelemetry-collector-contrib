@@ -193,6 +193,7 @@ func buildExponentialBucketHistogramMetric(desc statsDMetricDescription, histogr
 	}
 
 	dp.SetZeroCount(agg.ZeroCount())
+	dp.SetZeroThreshold(agg.ZeroThreshold())
 	dp.SetScale(agg.Scale())
 
 	for _, half := range []struct {

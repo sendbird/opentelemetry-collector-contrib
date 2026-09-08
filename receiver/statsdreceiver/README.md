@@ -59,6 +59,15 @@ observed values, which means two series of the same metric can end up on differe
 grids and stop being comparable. Scale `0` is a valid setting; omitting `max_scale` keeps
 the auto-scaling default.
 
+`"zero_threshold"` widens the zero bucket to the closed interval `[-zero_threshold,
+zero_threshold]`, matching the OTLP `zero_threshold` field. Measurements inside it are
+counted as zeroes, so no bucket is created below the threshold and a series that reports
+values far beneath the range anyone queries stops paying for them. Sum, count, min and max
+still reflect the values as measured; quantiles below the threshold do not, and become
+meaningless. The default of `0` folds only exact zeroes, which is the behavior of a
+histogram without this setting. Note this differs from the Prometheus client, where `0`
+selects a non-zero default threshold.
+
 Example:
 
 ```yaml
