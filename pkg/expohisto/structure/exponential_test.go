@@ -894,11 +894,82 @@ func TestMaxScaleStillDownscales(t *testing.T) {
 // destination's resolution.
 func TestMaxScaleMergeUsesCoarserScale(t *testing.T) {
 	src := NewFloat64(NewConfig(WithMaxSize(160)), 1, 2)
-	require.Greater(t, src.Scale(), int32(0))
+	require.Positive(t, src.Scale())
 
 	dst := NewFloat64(NewConfig(WithMaxSize(160), WithMaxScale(0)), 1)
 	dst.MergeFrom(src)
 
 	require.Equal(t, int32(0), dst.Scale())
 	require.Equal(t, uint64(3), dst.Count())
+}
+
+// TestZeroThresholdFoldsSmallValues checks that values in (0,T] land
+// in the zero bucket, leave the exponential buckets empty, and are
+// still reflected in the sum.
+func TestZeroThresholdFoldsSmallValues(t *testing.T) {
+	h := NewFloat64(NewConfig(WithMaxSize(160), WithZeroThreshold(1)), 0.25, 0.5, 1)
+
+	require.Equal(t, 1.0, h.ZeroThreshold())
+	require.Equal(t, uint64(3), h.Count())
+	require.Equal(t, uint64(3), h.ZeroCount())
+	require.Equal(t, uint32(0), h.Positive().Len())
+	require.Equal(t, 1.75, h.Sum())
+}
+
+// TestZeroThresholdIsSymmetric checks that the zero region is the
+// closed interval [-T,T], as the OTLP zero_threshold field defines it,
+// and that min and max still report the values as measured.
+func TestZeroThresholdIsSymmetric(t *testing.T) {
+	h := NewFloat64(NewConfig(WithMaxSize(160), WithZeroThreshold(1)), -1, -0.5, 0.5, 1)
+
+	require.Equal(t, uint64(4), h.ZeroCount())
+	require.Equal(t, uint32(0), h.Positive().Len())
+	require.Equal(t, uint32(0), h.Negative().Len())
+	require.Equal(t, 0.0, h.Sum())
+	require.Equal(t, -1.0, h.Min())
+	require.Equal(t, 1.0, h.Max())
+}
+
+// TestZeroThresholdKeepsLargerValues checks that values outside the
+// zero region are bucketed as usual on both sides.
+func TestZeroThresholdKeepsLargerValues(t *testing.T) {
+	h := NewFloat64(NewConfig(WithMaxSize(160), WithZeroThreshold(1)), 2, -2)
+
+	require.Equal(t, uint64(0), h.ZeroCount())
+	require.Equal(t, uint32(1), h.Positive().Len())
+	require.Equal(t, uint32(1), h.Negative().Len())
+	require.Equal(t, 0.0, h.Sum())
+}
+
+// TestZeroThresholdDisabledByDefault checks that leaving the option
+// unset keeps the original behavior, where only an exact zero folds.
+func TestZeroThresholdDisabledByDefault(t *testing.T) {
+	h := NewFloat64(NewConfig(WithMaxSize(160)), 0, 1e-300)
+
+	require.Equal(t, 0.0, h.ZeroThreshold())
+	require.Equal(t, uint64(1), h.ZeroCount())
+	require.Equal(t, uint32(1), h.Positive().Len())
+}
+
+// TestZeroThresholdSumIncludesFoldedIncrements checks the same sum
+// guarantee on the UpdateByIncr path, where a single call can fold
+// many measurements at once.
+func TestZeroThresholdSumIncludesFoldedIncrements(t *testing.T) {
+	h := NewFloat64(NewConfig(WithMaxSize(160), WithZeroThreshold(1)))
+	h.UpdateByIncr(0.5, 4)
+
+	require.Equal(t, uint64(4), h.Count())
+	require.Equal(t, uint64(4), h.ZeroCount())
+	require.Equal(t, 2.0, h.Sum())
+}
+
+// TestZeroThresholdRestoredByClear checks that Clear keeps the
+// configured threshold, which is configuration rather than state.
+func TestZeroThresholdRestoredByClear(t *testing.T) {
+	h := NewFloat64(NewConfig(WithMaxSize(160), WithZeroThreshold(1)), 0.5)
+	h.Clear()
+	h.Update(0.5)
+
+	require.Equal(t, 1.0, h.ZeroThreshold())
+	require.Equal(t, uint64(1), h.ZeroCount())
 }

@@ -17,6 +17,7 @@ package structure // import "github.com/open-telemetry/opentelemetry-collector-c
 import (
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/expohisto/mapping/exponent"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/expohisto/mapping/logarithm"
@@ -65,6 +66,12 @@ type Config struct {
 	// explicitly.
 	maxScale    int32
 	maxScaleSet bool
+
+	// zeroThreshold is the half-width of the zero region.  Unlike
+	// maxScale it needs no companion flag: 0 disables the feature
+	// and is also the original behavior, so unset and zero mean
+	// the same thing.
+	zeroThreshold float64
 }
 
 // Option is the interface that applies a configuration option.
@@ -103,6 +110,29 @@ type maxScale int32
 func (ms maxScale) apply(cfg Config) Config {
 	cfg.maxScale = int32(ms)
 	cfg.maxScaleSet = true
+	return cfg
+}
+
+// WithZeroThreshold sets the half-width of the zero region, the
+// closed interval [-threshold,threshold] whose measurements are
+// counted in the zero bucket instead of an exponential bucket.  It
+// bounds how many low-magnitude buckets a histogram can create, at the
+// cost of any resolution below the threshold.  The measurements still
+// contribute to the sum, the count, the minimum and the maximum.
+//
+// A threshold of 0, which is the default, folds only exact zeros.
+// Note this differs from the Prometheus client, where 0 selects a
+// non-zero default threshold.
+func WithZeroThreshold(threshold float64) Option {
+	return zeroThreshold(threshold)
+}
+
+// zeroThreshold is an option to set the width of the zero region.
+type zeroThreshold float64
+
+// apply implements Option.
+func (zt zeroThreshold) apply(cfg Config) Config {
+	cfg.zeroThreshold = float64(zt)
 	return cfg
 }
 
@@ -158,6 +188,19 @@ func (c Config) Validate() (Config, error) {
 		} else {
 			c.maxScale = MaximumMaxScale
 		}
+	}
+
+	// NaN and +Inf both fall through to the default arm, the
+	// first because every comparison against it is false and the
+	// second because it exceeds MaxFloat64.
+	switch {
+	case c.zeroThreshold == 0:
+		// Disabled: only exact zeros fold.
+	case c.zeroThreshold > 0 && c.zeroThreshold <= math.MaxFloat64:
+		// Valid.
+	default:
+		errs = append(errs, fmt.Errorf("invalid histogram zero threshold: %g", c.zeroThreshold))
+		c.zeroThreshold = 0
 	}
 
 	return c, errors.Join(errs...)

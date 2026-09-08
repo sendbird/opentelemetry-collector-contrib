@@ -16,6 +16,7 @@ package structure // import "github.com/open-telemetry/opentelemetry-collector-c
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/expohisto/mapping"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/expohisto/mapping/exponent"
@@ -41,6 +42,11 @@ type (
 		// returns to when cleared.  it is set by Init().
 		maxScale int32
 
+		// zeroThreshold is the half-width of the zero region.
+		// it is set by Init() and, being configuration rather
+		// than state, survives Clear().
+		zeroThreshold float64
+
 		// sum is the sum of all Updates reflected in the
 		// aggregator.  It has the same type number as the
 		// corresponding sdkinstrument.Descriptor.
@@ -48,7 +54,8 @@ type (
 		// count is incremented by 1 per Update.
 		count uint64
 		// zeroCount is incremented by 1 when the measured
-		// value is exactly 0.
+		// value falls in the zero region, which is exactly 0
+		// unless a zero threshold is configured.
 		zeroCount uint64
 		// min is set when count > 0
 		min N
@@ -165,6 +172,7 @@ func (h *Histogram[N]) Init(cfg Config) {
 
 	h.maxSize = cfg.maxSize
 	h.maxScale = cfg.maxScale
+	h.zeroThreshold = cfg.zeroThreshold
 
 	m, _ := newMapping(cfg.maxScale)
 	h.mapping = m
@@ -202,6 +210,12 @@ func (h *Histogram[N]) Scale() int32 {
 // ZeroCount implements aggregation.Histogram.
 func (h *Histogram[N]) ZeroCount() uint64 {
 	return h.zeroCount
+}
+
+// ZeroThreshold returns the half-width of the zero region, matching
+// the OTLP zero_threshold field.  It is 0 unless configured.
+func (h *Histogram[N]) ZeroThreshold() float64 {
+	return h.zeroThreshold
 }
 
 // Positive implements aggregation.Histogram.
@@ -311,13 +325,20 @@ func (h *Histogram[N]) UpdateByIncr(number N, incr uint64) {
 	// Note: Not checking for overflow here. TODO.
 	h.count += incr
 
-	if value == 0 {
+	// Sum maintains the original type, otherwise we use the floating point value.
+	//
+	// This runs before the zero region check so a folded measurement still
+	// reaches the sum; the threshold discards resolution, not magnitude.
+	h.sum += number * N(incr)
+
+	// The zero region is the closed interval [-zeroThreshold,zeroThreshold],
+	// as OTLP defines it.  An unset threshold leaves this equivalent to the
+	// original `value == 0`, NaN included, since every comparison against NaN
+	// is false either way.
+	if math.Abs(value) <= h.zeroThreshold {
 		h.zeroCount += incr
 		return
 	}
-
-	// Sum maintains the original type, otherwise we use the floating point value.
-	h.sum += number * N(incr)
 
 	var b *Buckets
 	if value > 0 {
@@ -542,6 +563,13 @@ func (b *Buckets) incrementBucket(bucketIndex int32, incr uint64) {
 }
 
 // Merge combines data from `o` into `h`.
+//
+// The destination keeps its own zero threshold, so merging histograms
+// configured with different thresholds yields a zero region that does not
+// describe the merged counts: a wider source contributes zeroes the
+// destination does not claim, and a narrower one contributes buckets that fall
+// inside the destination's zero region.  Merge only histograms sharing a
+// threshold, which is what a single Config guarantees.
 func (h *Histogram[N]) MergeFrom(o *Histogram[N]) {
 	if h.count == 0 {
 		h.min = o.min

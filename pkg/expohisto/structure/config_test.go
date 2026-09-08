@@ -15,6 +15,7 @@
 package structure // import "github.com/open-telemetry/opentelemetry-collector-contrib/pkg/expohisto/structure"
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -65,4 +66,26 @@ func TestConfigInvalidSizeAndScale(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, int32(MinSize), cfg.maxSize)
 	require.Equal(t, MaximumMaxScale, cfg.maxScale)
+}
+
+func TestConfigZeroThresholdValid(t *testing.T) {
+	require.True(t, NewConfig(WithZeroThreshold(0)).Valid())
+	require.True(t, NewConfig(WithZeroThreshold(1e-6)).Valid())
+	require.True(t, NewConfig(WithZeroThreshold(math.MaxFloat64)).Valid())
+
+	require.False(t, NewConfig(WithZeroThreshold(-1)).Valid())
+	require.False(t, NewConfig(WithZeroThreshold(math.NaN())).Valid())
+	require.False(t, NewConfig(WithZeroThreshold(math.Inf(+1))).Valid())
+}
+
+func TestConfigZeroThresholdDefaultDisabled(t *testing.T) {
+	cfg, err := Config{}.Validate()
+	require.NoError(t, err)
+	require.Equal(t, 0.0, cfg.zeroThreshold)
+}
+
+func TestConfigZeroThresholdResetWhenInvalid(t *testing.T) {
+	cfg, err := NewConfig(WithZeroThreshold(-1)).Validate()
+	require.Error(t, err)
+	require.Equal(t, 0.0, cfg.zeroThreshold)
 }
