@@ -13,7 +13,7 @@ dist:
   # Sendbird fork: bump to the ECR tag before every build. The statsd receiver stamps this
   # as scope.version on every series, and there is no way to inject it later -- the target
   # has no -ldflags, and Version is a constant inside a BuildInfo literal.
-  version: v0.159.0-sbcustom-3
+  version: v0.159.0-sbcustom-4
   output_path: ./cmd/otelcontribcol
 
 extensions:
